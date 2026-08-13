@@ -737,10 +737,9 @@ def generate():
             if not ref_keys:
                 return jsonify({"error": f"Nodo {node_type} sin input ref_videos"}), 400
             refs[sorted(ref_keys)[0]] = vid_refs
-            if audio_name and "ref_video_audios" in all_inputs:
-                base[str(nid)] = {"class_type": "LoadAudio", "inputs": {"audio": audio_name}}
-                refs["ref_video_audios"] = {"ref_video_audio_1": [str(nid), 0]}
-                nid += 1
+            # NOTA: el audio del video de referencia se usa AUTOMÁTICAMENTE (doc oficial);
+            # NO pasar ref_video_audios por separado — interfería con el audio nativo.
+            # (se mantiene la extracción de audio solo para duración/detección)
         # imágenes -> LoadImage + ref_images
         if img_names:
             img_refs = {}
@@ -763,8 +762,9 @@ def generate():
                         "first_frame": [str(5), 0],
                     },
                 }
-        # prompt de edición con tokens de referencia oficiales de H3: <Video 1>, <Picture N>
-        # (la API oficial requiere referenciar los inputs como <Video 1>..<Video 3>, <Picture 1>..)
+        # prompt de edición — FORMATO OFICIAL (guía Runware/MiniMax):
+        # "In Video 1, <cambio>. Keep <lo que se mantiene> exactly the same. Sound: ..."
+        # El prompt es una INSTRUCCIÓN; el modelo devuelve el audio nativo del video de referencia.
         refs_txt = ""
         if vid_names:
             refs_txt += "".join(f"<Video {j}>" for j in range(1, len(vid_names) + 1))
@@ -772,11 +772,13 @@ def generate():
             refs_txt += "".join(f"<Picture {j}>" for j in range(1, len(img_names) + 1))
         if not refs_txt:
             refs_txt = "<Video 1>"
-        edit_p = (f"Keep the exact same scene, background, person, pose, motion, "
-                  f"camera and audio as {refs_txt}, frame by frame. "
-                  f"Only apply the requested change to every frame from start to end: " + prompt)
-        if not vid_names:
-            # i2v multi-imagen: el hidden_p debe referenciar las fotos con sus tokens
+        if vid_names:
+            edit_p = (f"In Video 1, " + prompt +
+                      f". Keep the same person, their exact pose, motion and gestures, the background, "
+                      f"and the camera framing exactly the same as Video 1. "
+                      f"Sound: keep the original audio of Video 1.")
+        else:
+            # i2v multi-imagen: hidden_p referenciando las fotos con sus tokens
             edit_p = hidden_p.replace("as the input", f"as {refs_txt}") + prompt
         base["6"] = {
             "class_type": node_type,
