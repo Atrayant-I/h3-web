@@ -3,6 +3,8 @@
 export PATH=/opt/miniforge3/bin:$PATH
 export COMFY_URL=http://127.0.0.1:18188
 export PORT=18189
+export INSTANCE_ID=47615283
+export SHUTDOWN_PIN=H3-APAGAR
 cd /workspace
 pkill -9 -f h3_web.py 2>/dev/null
 sleep 1
