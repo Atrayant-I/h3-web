@@ -1,57 +1,77 @@
-# h3-web — Interfaz web MiniMax H3 (ComfyUI en Vast.ai)
+# H3 Web — MiniMax H3 (video generation) Web UI
 
-Web UI para generar/editar video con MiniMax H3 open-weights corriendo en ComfyUI
-(instancia RTX 5090 en Vast.ai). Sirve para: i2v (imagen→video), v2v (video→video
-con edición fiel), multi-archivo (hasta 5 refs), galería de resultados, pegado de
-imágenes desde portapapeles (incl. móvil).
+Interfaz web Flask para generar videos con **MiniMax H3** (33B, open weights) corriendo en ComfyUI sobre GPU rentada (Vast.ai, RTX 5090).
 
-## Archivos
+## Funciones
 
-- `h3_web.py` — app Flask: endpoints `/generate`, `/status/<pid>`, `/result/<pid>`,
-  `/api/gallery`, `/thumb/<path>`, `/media/<path>`. Se comunica con ComfyUI local.
-- `start_h3web.sh` — arranca/relanza la interfaz en `:18189` (PATH miniforge,
-  COMFY_URL, PORT). Uso: `bash /workspace/start_h3web.sh`.
+- **i2v** (imagen → video) y **v2v** (video → video con edición fiel: mismo inicio, pose, fondo y **audio original**; solo cambia lo que pide el prompt)
+- Duración 5/10/15 s (en v2v se usa la duración del video original automáticamente)
+- Calidad 480p (rápido) / 768p (nativo)
+- Orientación **Auto** (igual que tu archivo), 16:9, 9:16, 1:1
+- Barra de progreso real (WebSocket de ComfyUI)
+- Resultado MP4 embebido en la página, con audio
+- Accesible en la red local: `http://<IP-LAN>:18189`
 
-## Despliegue en instancia Vast (template 535237)
+## Despliegue en Vast.ai
 
-El template privado de Vast (hash actual: consultar en consola; cambia en cada
-update) ejecuta un onstart que: instala torch cu130 si falta, descarga modelos H3
-(Comfy-Org/MiniMax-H3), baja estos archivos desde este repo con curl, y lanza
-ComfyUI (`:18188`) + la web (`:18189`).
+Instancia: imagen `vastai/comfy` (ya trae ComfyUI + pytorch), RTX 5090, ~$0.336/h.
+Template privado creado: busca "MiniMax H3" en tus templates, o usa el CLI:
+`vastai create instance --template_hash a7c81127cded78225c3a2f3ae7c45222`
 
-Acceso: túnel SSH `ssh -L 0.0.0.0:18189:127.0.0.1:18189 root@<host> -p <port>`
-(bind 0.0.0.0 para red LAN; firewall Windows: reglas H3-Web-18189 / H3-Comfy-18188).
+### Setup manual (si no usas el template)
 
-## Notas técnicas (importantes)
+```bash
+# 1) Instalar torch (CUDA 13, Blackwell) en el python de la imagen
+/opt/miniforge3/bin/pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
 
-### Modelos H3
-- `diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors` (21GB, i2v)
-- `diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors` (21GB, v2v)
-- `text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors` (15.7GB, CLIPLoader type=minimax)
-- `vae/minimax_h3_video_vae_fp16.safetensors` + `vae/minimax_h3_audio_vae_fp32.safetensors`
+# 2) ComfyUI ya viene en /opt/workspace-internal/ComfyUI — instalar sus deps:
+cd /opt/workspace-internal/ComfyUI && /opt/miniforge3/bin/pip install -r requirements.txt
 
-### Workflow API ComfyUI 0.32 — PUNTOS CRÍTICOS (bugs sufridos)
-- Upload: `POST /upload/image`, campo multipart SIEMPRE `image` (server.py hace
-  `post.get("image")`); `/api/upload/video` NO existe (405).
-- Endpoints SIN prefijo `/api/`: `/prompt`, `/history/{pid}`, `/view`, `/object_info`, `/queue`, `/interrupt`.
-- **LoadVideo: el input se llama `file` (COMBO), NO `video`** — si mandas `video`,
-  ComfyUI lo ignora y carga el PRIMER archivo del combo (bug que rompía el v2v).
-- SaveVideo requiere `format` y `codec` ("auto" como string, no dict).
-- Nodos legacy `MinimaxHailuo03*` piden LOGIN (Unauthorized) — NO usar.
-- v2v `MiniMaxH3ReferenceToVideo`: refs AUTOGROW como dict `{"ref_videos": {"ref_video_1": ["5",0]}}`,
-  `{"ref_video_audios": {"ref_video_audio_1": ["13",0]}}`; `ref_image_size: "match"`.
-  object_info: input = `{"required":{...},"optional":{...}}` (buscar refs en optional).
-- Salida: history guarda el MP4 bajo clave `images` (animated:true), NO `videos`;
-  status/result deben buscar en videos+images+gifs+files.
-- Progreso: solo por WebSocket `/ws?clientId=X` con `origin=<COMFY_URL>` (sin origin da timeout).
-- **reference_videos solo soportado a 480p** (doc oficial): si el video excede 480p
-  en su lado corto, escalarlo con ffmpeg antes de subirlo.
-- **Tokens de referencia en el prompt**: el modelo requiere `<Video 1>`, `<Picture N>`
-  explícitos en el prompt para aplicar las referencias (igual que la API de Wavespeed).
+# 3) Modelos H3 (~63.5GB) en:
+#   models/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors   (21GB, i2v)
+#   models/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors (21GB, v2v)
+#   models/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors         (15.7GB)
+#   models/vae/minimax_h3_video_vae_fp16.safetensors                          (5.2GB)
+#   models/vae/minimax_h3_audio_vae_fp32.safetensors                          (0.6GB)
+#   Fuente: https://huggingface.co/Comfy-Org/MiniMax-H3
 
-### Costos/velocidad (Vast, ago-2026)
-- RTX 5090 ~$0.336/h; i2v 480p 5s ≈ 108s; v2v ref2va ≈ 17s/paso (30 pasos ≈ 8-9 min).
-- Usar imagen `vastai/comfy` (pull rápido); NO `pytorch/pytorch` (build 20+ min) ni
-  `comfyanonymous/comfyui` (no existe en Docker Hub).
-- On-demand vs interruptible: interruptible = puja baja pero te pueden quitar la
-  máquina a mitad de una generación (9-10 min) — para uso interactivo, on-demand.
+# 4) Lanzar ComfyUI en 18188 (--listen 127.0.0.1 --port 18188) y la web:
+bash start_h3web.sh
+```
+
+### Túnel SSH local (para acceder desde tu PC)
+
+```bash
+ssh -N -i ~/.ssh/id_ed25519 -p <PORT> -L 0.0.0.0:18189:127.0.0.1:18189 -L 0.0.0.0:18188:127.0.0.1:18188 root@ssh8.vast.ai
+```
+
+Luego abre `http://localhost:18189` (o `http://<IP-LAN>:18189` desde cualquier dispositivo en tu WiFi; firewall: `netsh advfirewall firewall add rule name=H3 dir=in action=allow protocol=TCP localport=18189`).
+
+## Pipeline ComfyUI (nativo, sin login)
+
+```
+UNETLoader (fl2va/ref2va) → MODEL
+CLIPLoader (qwen3vl, type=minimax) → CLIP
+VAELoader (video_vae) → VAE
+VAELoader (audio_vae) → AUDIO_VAE
+LoadImage / LoadVideo → first_frame / ref_videos
+MiniMaxH3ImageToVideo | MiniMaxH3ReferenceToVideo (ref_image_size=match, ref_video_audios para audio original)
+KSampler → VAEDecode + VAEDecodeAudio → CreateVideo (24fps, audio) → SaveVideo
+```
+
+Nota: los nodos legacy (`MinimaxHailuo03*`) piden login — usar los nativos `MiniMaxH3*`.
+
+## Costos
+
+- Instancia RTX 5090: ~$0.336/h
+- Clip 480p 5s i2v: ~2 min GPU (~$0.01)
+- Clip v2v (ref2va): ~5× más lento
+- Botón de apagado: destruir instancia desde la consola Vast (el disco se pierde; los modelos se re-descargan con el template)
+
+## Estado
+
+- [x] i2v funcional con audio
+- [x] v2v edición fiel (audio + duración original + pose/fondo)
+- [x] Aspect ratio auto
+- [x] Progreso real vía WebSocket
+- [x] Acceso LAN
