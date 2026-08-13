@@ -70,110 +70,183 @@ def ws_listener():
 threading.Thread(target=ws_listener, daemon=True).start()
 
 HTML = """<!DOCTYPE html>
-<html lang="es"><head><meta charset="utf-8">
+<html lang="es">
+<head>
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MiniMax H3 — Generador de video</title>
 <style>
-  body{font-family:system-ui,sans-serif;background:#0f1117;color:#e6e6e6;margin:0;padding:24px}
-  .card{max-width:720px;margin:0 auto;background:#1a1d27;border:1px solid #2c3040;border-radius:12px;padding:24px}
-  h1{font-size:20px;margin:0 0 4px}
-  .sub{color:#8b93a7;font-size:13px;margin-bottom:20px}
-  .bal{display:inline-block;margin-left:8px;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;vertical-align:middle}
-  .bal.ok{background:#052e16;color:#4ade80;border:1px solid #166534}
-  .bal.warn{background:#2e1c05;color:#facc15;border:1px solid #713f12}
-  .bal.low{background:#2e0505;color:#f87171;border:1px solid #7f1d1d}
-  .bal.off{background:#151823;color:#8b93a7;border:1px solid #2c3040}
-  label{display:block;font-size:13px;margin:14px 0 6px;color:#aab3c5}
-  input[type=file]{width:100%;padding:10px;background:#0f1117;border:1px solid #2c3040;border-radius:8px;color:#e6e6e6}
-  textarea{width:100%;height:110px;padding:10px;background:#0f1117;border:1px solid #2c3040;border-radius:8px;color:#e6e6e6;font-family:inherit;resize:vertical}
-  select{padding:8px;background:#0f1117;border:1px solid #2c3040;border-radius:8px;color:#e6e6e6}
-  button{margin-top:18px;width:100%;padding:12px;background:#4f46e5;border:none;border-radius:8px;color:#fff;font-size:15px;font-weight:600;cursor:pointer}
-  button:disabled{opacity:.5;cursor:wait}
-  #status{margin-top:14px;font-size:13px;color:#8b93a7;white-space:pre-wrap}
-  video{width:100%;margin-top:16px;border-radius:8px;background:#000}
-  .bar{height:6px;background:#2c3040;border-radius:3px;margin-top:10px;overflow:hidden;display:none}
-  .bar div{height:100%;background:#4f46e5;width:0%;transition:width .5s}
-  .err{color:#f87171;margin-top:10px;font-size:13px;white-space:pre-wrap}
-  .ok{color:#34d399}
-  .tabs{display:flex;gap:8px;margin-bottom:18px;border-bottom:1px solid #2c3040;padding-bottom:10px}
-  .tab{flex:1;text-align:center;padding:10px;border-radius:8px;cursor:pointer;color:#8b93a7;font-weight:600;font-size:14px;background:#151823;border:1px solid #2c3040}
-  .tab.active{background:#4f46e5;color:#fff;border-color:#4f46e5}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0e1017;color:#e2e8f0;font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
+  .card{max-width:1180px;margin:0 auto;padding:20px}
+  /* tabs */
+  .tabs{display:flex;gap:6px;border-bottom:1px solid #232838;padding-bottom:10px;margin-bottom:18px}
+  .tab{display:flex;align-items:center;gap:8px;background:#161926;color:#8b93a7;border:1px solid #232838;border-radius:10px;padding:9px 16px;font-size:14px;cursor:pointer;transition:all .15s}
+  .tab:hover{color:#cbd5e1;border-color:#343b52}
+  .tab.active{background:#1e2437;color:#e2e8f0;border-color:#4f46e5;box-shadow:0 0 0 1px #4f46e5}
+  .tab svg{flex-shrink:0}
+  .bal{margin-left:auto;align-self:center;font-size:12px;color:#34d399;font-weight:600;background:#12151f;border:1px solid #1f2937;padding:6px 12px;border-radius:8px}
+  .bal.off{color:#f59e0b}
   .view{display:none}
   .view.active{display:block}
-  #gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-top:10px}
-  .gitem{background:#151823;border:1px solid #2c3040;border-radius:10px;overflow:hidden;cursor:pointer;transition:border-color .2s}
-  .gitem:hover{border-color:#4f46e5}
-  .gitem img{width:100%;display:block;aspect-ratio:9/16;object-fit:cover;background:#000}
-  .gitem .gname{padding:8px 10px;font-size:11px;color:#8b93a7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .gitem .gmeta{font-size:10px;color:#5c6478;padding:0 10px 8px}
-  #drop{border:2px dashed #3a4156;border-radius:10px;padding:18px;text-align:center;cursor:pointer;color:#8b93a7;font-size:13px;transition:border-color .2s,background .2s}
-  #drop.dragover{border-color:#4f46e5;background:#1e2130}
-  #drop small{color:#5c6478}
-  #previews{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px;margin-top:12px}
-  .pitem{position:relative;border:1px solid #2c3040;border-radius:8px;overflow:hidden;background:#0f1117}
-  .pitem img,.pitem video{width:100%;aspect-ratio:9/16;object-fit:cover;display:block;background:#000}
-  .pitem .px{position:absolute;top:3px;right:3px;width:18px;height:18px;border:none;border-radius:50%;background:#f87171;color:#fff;font-size:11px;line-height:18px;cursor:pointer;text-align:center;padding:0}
-  .pitem .ptag{position:absolute;bottom:3px;left:3px;font-size:9px;background:#000a;color:#cbd5e1;padding:1px 5px;border-radius:4px}
-  .cliprow{margin-top:8px;text-align:center}
-  #pastebtn{display:inline-flex;align-items:center;gap:6px;background:#151823;border:1px solid #2c3040;color:#aab3c5;padding:8px 14px;border-radius:8px;font-size:12px;cursor:pointer}
-  #pastebtn:hover{border-color:#4f46e5;color:#fff}
-</style></head><body><div class="card">
-<div class="tabs">
-  <button class="tab active" id="tab-gen" onclick="showTab('gen')">⚡ Generador</button>
-  <button class="tab" id="tab-gal" onclick="showTab('gal')">🎬 Galería</button>
-  <button class="tab danger" id="tab-off" onclick="apagar()">⏻ Apagar servidor</button>
-</div>
-<div class="view active" id="view-gen">
-<h1>🎬 MiniMax H3 — i2v / v2v <span class="bal off" id="bal" title="Saldo Vast.ai">Saldo…</span></h1>
-<div class="sub">RTX 5090 · {{res}} · ~{{dur}}s · Genera video + audio nativo</div>
-<form id="f">
-  <label>Archivos — arrastra hasta 5 (imágenes o videos)</label>
-  <div id="drop" onclick="$('file').click()">
-    <div id="dropmsg">📁 Arrastra archivos aquí o haz clic para seleccionar<br><small>hasta 5 · imagen (i2v) o video (v2v)</small></div>
-    <div id="previews"></div>
-    <input type="file" id="file" accept="image/*,video/*" multiple hidden>
-  </div>
-  <div class="cliprow">
-    <button type="button" id="pastebtn" title="Pegar imagen del portapapeles">
-      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11v6M9 14h6"/></svg>
-      Pegar imagen (Ctrl+V)
+  /* layout 2 columnas escritorio */
+  .main{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+  @media (max-width:900px){.main{grid-template-columns:1fr}}
+  .col{background:#151824;border:1px solid #232838;border-radius:14px;padding:18px}
+  .col h2{font-size:14px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+  .col h2 svg{color:#4f46e5}
+  /* drop zone */
+  #drop{border:2px dashed #343b52;border-radius:12px;padding:26px 16px;text-align:center;cursor:pointer;color:#7c8498;font-size:13px;transition:all .15s;background:#12151f}
+  #drop:hover{border-color:#4f46e5;color:#a5b0c2;background:#141827}
+  #drop.dragover{border-color:#4f46e5;background:#1a1f33;color:#cbd5e1}
+  #drop svg{margin-bottom:8px;color:#5b6479}
+  #drop small{display:block;margin-top:4px;color:#5b6479;font-size:11px}
+  /* previews */
+  #previews{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;min-height:0}
+  .pitem{position:relative;border:1px solid #2a3044;border-radius:10px;overflow:hidden;background:#12151f}
+  .pitem img,.pitem video{width:72px;height:96px;object-fit:cover;display:block}
+  .ptag{position:absolute;top:4px;left:4px;background:rgba(14,16,23,.85);color:#cbd5e1;font-size:9px;padding:2px 6px;border-radius:6px;display:flex;align-items:center;gap:4px}
+  .px{position:absolute;top:4px;right:4px;background:rgba(220,38,38,.9);color:#fff;border:none;border-radius:6px;width:18px;height:18px;font-size:11px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .px:hover{background:#ef4444}
+  /* portapapeles */
+  .cliprow{display:flex;justify-content:flex-end;margin-top:8px}
+  #pastebtn{display:flex;align-items:center;gap:6px;background:none;border:1px solid #2a3044;color:#8b93a7;border-radius:8px;padding:6px 10px;font-size:11px;cursor:pointer}
+  #pastebtn:hover{color:#cbd5e1;border-color:#4f46e5}
+  /* prompt */
+  #prompt{width:100%;background:#12151f;border:1px solid #2a3044;border-radius:10px;color:#e2e8f0;padding:10px 12px;font-size:13px;font-family:inherit;resize:vertical;min-height:64px;margin-top:12px}
+  #prompt:focus{outline:none;border-color:#4f46e5}
+  /* opciones */
+  .opts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+  @media (max-width:600px){.opts{grid-template-columns:1fr}}
+  .opt{background:#12151f;border:1px solid #2a3044;border-radius:10px;padding:10px 12px}
+  .opt label{display:flex;align-items:center;gap:6px;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+  .opt label svg{color:#4f46e5}
+  .opt select{width:100%;background:#1a1e2b;border:1px solid #2a3044;color:#e2e8f0;border-radius:8px;padding:7px 8px;font-size:13px}
+  .opt select:focus{outline:none;border-color:#4f46e5}
+  #durnote{display:block;font-size:10px;color:#f59e0b;margin-top:4px}
+  .hint{margin-top:10px;font-size:11px;color:#5b6479;display:flex;align-items:center;gap:6px}
+  /* botón generar */
+  #go{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:14px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity .15s}
+  #go:hover{opacity:.9}
+  #go:disabled{opacity:.5;cursor:not-allowed}
+  /* HUD resultado */
+  #status{font-size:13px;margin-bottom:8px;min-height:20px;display:flex;align-items:center;gap:8px}
+  .bar{height:8px;background:#1e2230;border-radius:6px;overflow:hidden;margin-bottom:14px}
+  #barfill{height:100%;width:0%;background:linear-gradient(90deg,#4f46e5,#7c3aed);transition:width .3s}
+  #res video{width:100%;border-radius:10px;background:#000;border:1px solid #232838}
+  #res .err{color:#f87171;font-size:12px;white-space:pre-wrap;margin-top:8px}
+  .ok{color:#34d399}
+  .empty{color:#5b6479;font-size:12px;text-align:center;padding:40px 10px;border:1px dashed #232838;border-radius:10px}
+  .empty svg{margin-bottom:10px;color:#3b4257}
+  /* galería */
+  #gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+  @media (max-width:600px){#gal{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}}
+  .gitem{background:#151824;border:1px solid #232838;border-radius:12px;overflow:hidden;cursor:pointer;transition:all .15s}
+  .gitem:hover{border-color:#4f46e5;transform:translateY(-2px)}
+  .gitem img{width:100%;aspect-ratio:9/16;object-fit:cover;display:block;background:#000}
+  .gdel{position:absolute;top:6px;right:6px;background:rgba(14,16,23,.85);color:#f87171;border:1px solid rgba(248,113,113,.3);border-radius:7px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity .15s}
+  .gitem:hover .gdel{opacity:1}
+  .gdel:hover{background:rgba(220,38,38,.85);color:#fff}
+  .gitem{position:relative}
+  .gname{font-size:11px;color:#cbd5e1;padding:8px 10px 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .gmeta{font-size:10px;color:#5b6479;padding:0 10px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="tabs">
+    <span id="bal" class="bal"></span>
+    <button class="tab active" id="tab-gen" onclick="showTab('gen')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+      Generador
+    </button>
+    <button class="tab" id="tab-gal" onclick="showTab('gal')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 4v16M17 4v16M2 9h5M2 15h5M17 9h5M17 15h5"/></svg>
+      Galería
     </button>
   </div>
-  <label>Prompt (describe movimiento, cámara y audio)</label>
-  <textarea id="prompt" placeholder="Ej: La persona camina hacia la cámara sonriendo, plano medio, luz cálida, viento suave, sonido ambiente de calle..."></textarea>
-  <label>Modo: <select id="mode">
-    <option value="auto">Auto (imagen→i2v, video→v2v)</option>
-    <option value="i2v">i2v (imagen a video)</option>
-    <option value="v2v">v2v (video a video)</option>
-  </select>
-  &nbsp;·&nbsp; Duración: <select id="dur">
-    <option value="5" selected>5 s</option>
-    <option value="10">10 s</option>
-    <option value="15">15 s (máx)</option>
-  </select> <span id="durnote" style="display:none;color:#f0c060">(bloqueada — usará la duración del video)</span>
-  &nbsp;·&nbsp; Calidad: <select id="qual">
-    <option value="480" selected>480p (rápido)</option>
-    <option value="768">768p (nativo)</option>
-  </select>
-  &nbsp;·&nbsp; Orientación: <select id="orient">
-    <option value="auto" selected>Auto (igual que tu archivo)</option>
-    <option value="16:9">16:9 horizontal</option>
-    <option value="9:16">9:16 vertical</option>
-    <option value="1:1">1:1 cuadrado</option>
-  </select></label>
-  <div class="sub">480p = ~2-3× más rápido que 768p · 9:16 en 480p = 480×864</div>
-  <button id="go" type="submit">Generar video</button>
-</form>
-<div id="status"></div><div class="bar" id="bar"><div id="barfill"></div></div>
-<div id="res"></div>
+
+  <div class="view active" id="view-gen">
+    <div class="main">
+      <div class="col">
+        <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.9A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2.5 8.2"/><path d="M12 12v9M8 17l4 4 4-4"/></svg>Generador</h2>
+        <div id="drop">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5M12 3v12"/></svg>
+          <div id="dropmsg">Arrastra hasta 5 imágenes aquí<br><small>o haz clic para seleccionar · imagen (i2v)</small></div>
+        </div>
+        <div id="previews"></div>
+        <div class="cliprow">
+          <button id="pastebtn" type="button">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
+            Pegar imagen (Ctrl+V)
+          </button>
+        </div>
+        <textarea id="prompt" placeholder="Describe el movimiento, la cámara y el audio…"></textarea>
+        <div class="opts">
+          <div class="opt">
+            <label><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Duración</label>
+            <select id="dur">
+              <option value="5" selected>5 s</option>
+              <option value="10">10 s</option>
+              <option value="15">15 s (máx)</option>
+            </select>
+            <span id="durnote" style="display:none"></span>
+          </div>
+          <div class="opt">
+            <label><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M19.1 4.9l-2.8 2.8M7.7 16.3l-2.8 2.8"/></svg>Calidad</label>
+            <select id="qual">
+              <option value="768" selected>Máxima · 768p (turbo 8 pasos)</option>
+              <option value="480">Rápida · 480p (turbo 4 pasos)</option>
+            </select>
+          </div>
+          <div class="opt">
+            <label><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>Orientación</label>
+            <select id="orient">
+              <option value="auto" selected>Auto (igual que tu foto)</option>
+              <option value="16:9">16:9 horizontal</option>
+              <option value="9:16">9:16 vertical</option>
+              <option value="1:1">1:1 cuadrado</option>
+            </select>
+          </div>
+          <div class="opt">
+            <label><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h7v9H4zM13 4h7v5h-7zM13 13h7v7h-7zM4 17h7v3H4z"/></svg>Modo</label>
+            <select id="mode">
+              <option value="auto" selected>Auto</option>
+              <option value="i2v">i2v (imagen → video)</option>
+            </select>
+          </div>
+        </div>
+        <div class="hint">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          {{res}} · {{dur}} · el prompt oculto fija cara, pose y fondo
+        </div>
+        <button id="go">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          Generar video
+        </button>
+      </div>
+
+      <div class="col">
+        <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 4v16M17 4v16M2 9h5M2 15h5M17 9h5M17 15h5"/></svg>Resultado</h2>
+        <div id="status"></div>
+        <div class="bar" id="bar"><div id="barfill"></div></div>
+        <div id="res"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="view" id="view-gal">
+    <h2 style="font-size:14px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px;display:flex;align-items:center;gap:8px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#4f46e5"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 4v16M17 4v16M2 9h5M2 15h5M17 9h5M17 15h5"/></svg>
+      Galería
+    </h2>
+    <div id="gal"></div>
+  </div>
 </div>
-<div class="view" id="view-gal">
-  <h1>🎬 Galería</h1>
-  <div class="sub">Todos los videos generados · clic para abrir en ventana nueva</div>
-  <div id="gal"></div>
-</div>
-</div>
+<input type="file" id="file" accept="image/*,video/*" multiple hidden>
+<form id="f" style="display:none"></form>
 <script>
+
 const $=id=>document.getElementById(id);
 function showTab(name){
   $('tab-gen').classList.toggle('active', name==='gen');
@@ -209,15 +282,29 @@ async function loadGallery(){
       const url='/media/'+v.rel.split('/').map(encodeURIComponent).join('/');
       return '<div class="gitem" data-url="'+url+'">'+
         '<img loading="lazy" src="/thumb/'+v.rel.split('/').map(encodeURIComponent).join('/')+'" alt="'+v.name.replace(/"/g,'&quot;')+'">'+
+        '<button class="gdel" title="Borrar video" onclick="event.stopPropagation(); borrarVideo(this)">'+
+          '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M10 11v6M14 11v6"/></svg>'+
+        '</button>'+
         '<div class="gname">'+v.name.replace(/"/g,'&quot;')+'</div>'+
         '<div class="gmeta">'+fmtSize(v.size)+' · '+new Date(v.mtime*1000).toLocaleString()+'</div>'+
       '</div>';
     }).join('');
     $('gal').addEventListener('click', e=>{
       const it=e.target.closest('.gitem');
-      if(it) window.open(it.dataset.url,'_blank');
+      if(it && !e.target.closest('.gdel')) window.open(it.dataset.url,'_blank');
     });
   }catch(err){ $('gal').innerHTML='<div class="err">'+err+'</div>'; }
+}
+async function borrarVideo(btn){
+  const item=btn.closest('.gitem');
+  const rel=item.dataset.url.replace('/media/','').split('/').map(decodeURIComponent).join('/');
+  if(!confirm('¿Borrar este video de la galería?')) return;
+  try{
+    const r=await fetch('/api/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rel})});
+    const j=await r.json();
+    if(j.ok){ item.remove(); }
+    else alert('Error: '+(j.error||'desconocido'));
+  }catch(e){ alert('Error de red: '+e); }
 }
 // --- múltiples archivos: drop + pegar portapapeles ---
 const FILES=[];
@@ -351,7 +438,10 @@ $('f').addEventListener('submit', async e=>{
   }catch(err){ $('res').innerHTML='<div class="err">'+err+'</div>'; }
   finally{ $('go').disabled=false; }
 });
-</script></body></html>"""
+
+</script>
+</body>
+</html>"""
 
 # ---------------- ComfyUI helpers ----------------
 
@@ -501,6 +591,33 @@ def list_videos():
 @app.route("/api/gallery")
 def api_gallery():
     return jsonify(list_videos())
+
+@app.route("/api/delete", methods=["POST"])
+def api_delete():
+    """Borra un video de la galería: archivo mp4 + miniatura + registro."""
+    rel = (request.json or {}).get("rel", "")
+    if not rel:
+        return jsonify({"error": "falta rel"}), 400
+    # validar: dentro de OUTPUT_DIR, sin subir niveles
+    full = os.path.normpath(os.path.join(OUTPUT_DIR, rel))
+    base = os.path.normpath(OUTPUT_DIR)
+    if not full.startswith(base + os.sep) or ".." in rel.split("/"):
+        return jsonify({"error": "ruta inválida"}), 400
+    if not os.path.isfile(full):
+        return jsonify({"error": "archivo no existe"}), 404
+    try:
+        os.remove(full)
+        thumb_path = os.path.join(THUMB_DIR, rel.replace("/", "_") + ".jpg")
+        if os.path.exists(thumb_path):
+            os.remove(thumb_path)
+        # quitar del registro
+        gens = load_generations()
+        gens = [g for g in gens if g.get("rel") != rel]
+        with open(GEN_FILE, "w") as f:
+            json.dump(gens, f)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/balance")
 def api_balance():
