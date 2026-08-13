@@ -12,7 +12,7 @@ from flask import Flask, request, render_template_string, jsonify, send_file
 COMFY = os.environ.get("COMFY_URL", "http://127.0.0.1:8188")
 RESOLUTION = os.environ.get("RESOLUTION", "480P")   # 480P o 768P
 DURATION = float(os.environ.get("DURATION", "5"))
-STEPS = int(os.environ.get("STEPS", "22"))  # 22 pasos (era 30): ~27% más rápido, calidad similar en H3
+STEPS = int(os.environ.get("STEPS", "28"))  # 28 pasos (era 30): balance calidad/velocidad con SageAttention
 MODEL_NAME = os.environ.get("MODEL_NAME", "MiniMax H3")
 # Clave de Vast: desde env o desde /workspace/.env (para el badge de saldo)
 def _load_env_file(path):
