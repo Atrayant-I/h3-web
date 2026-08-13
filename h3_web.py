@@ -449,9 +449,10 @@ def vast_stop():
     if not VAST_KEY or not INSTANCE_ID:
         return {"ok": False, "error": "Sin VAST_API_KEY o INSTANCE_ID configurados"}
     try:
-        r = requests.post(
-            f"https://console.vast.ai/api/v0/instances/{INSTANCE_ID}/stop/",
-            headers={"Authorization": f"Bearer {VAST_KEY}"}, timeout=30)
+        r = requests.put(
+            f"https://console.vast.ai/api/v0/instances/{INSTANCE_ID}/",
+            headers={"Authorization": f"Bearer {VAST_KEY}", "Content-Type": "application/json"},
+            json={"state": "stopped"}, timeout=30)
         return {"ok": r.status_code == 200, "status": r.status_code, "resp": r.text[:300]}
     except Exception as e:
         return {"ok": False, "error": str(e)[:300]}
