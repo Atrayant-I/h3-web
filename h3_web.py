@@ -14,6 +14,19 @@ RESOLUTION = os.environ.get("RESOLUTION", "480P")   # 480P o 768P
 DURATION = float(os.environ.get("DURATION", "5"))
 STEPS = int(os.environ.get("STEPS", "30"))
 MODEL_NAME = os.environ.get("MODEL_NAME", "MiniMax H3")
+# Clave de Vast: desde env o desde /workspace/.env (para el badge de saldo)
+def _load_env_file(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, _, v = line.partition("=")
+                    os.environ.setdefault(k.strip(), v.strip())
+    except OSError:
+        pass
+_load_env_file("/workspace/.env")
+VAST_API_KEY = os.environ.get("VAST_API_KEY", "")
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200MB upload
@@ -65,6 +78,11 @@ HTML = """<!DOCTYPE html>
   .card{max-width:720px;margin:0 auto;background:#1a1d27;border:1px solid #2c3040;border-radius:12px;padding:24px}
   h1{font-size:20px;margin:0 0 4px}
   .sub{color:#8b93a7;font-size:13px;margin-bottom:20px}
+  .bal{display:inline-block;margin-left:8px;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;vertical-align:middle}
+  .bal.ok{background:#052e16;color:#4ade80;border:1px solid #166534}
+  .bal.warn{background:#2e1c05;color:#facc15;border:1px solid #713f12}
+  .bal.low{background:#2e0505;color:#f87171;border:1px solid #7f1d1d}
+  .bal.off{background:#151823;color:#8b93a7;border:1px solid #2c3040}
   label{display:block;font-size:13px;margin:14px 0 6px;color:#aab3c5}
   input[type=file]{width:100%;padding:10px;background:#0f1117;border:1px solid #2c3040;border-radius:8px;color:#e6e6e6}
   textarea{width:100%;height:110px;padding:10px;background:#0f1117;border:1px solid #2c3040;border-radius:8px;color:#e6e6e6;font-family:inherit;resize:vertical}
@@ -101,11 +119,12 @@ HTML = """<!DOCTYPE html>
   #pastebtn:hover{border-color:#4f46e5;color:#fff}
 </style></head><body><div class="card">
 <div class="tabs">
-  <div class="tab active" id="tab-gen" onclick="showTab('gen')">⚡ Generador</div>
-  <div class="tab" id="tab-gal" onclick="showTab('gal')">🎬 Galería</div>
+  <button class="tab active" id="tab-gen" onclick="showTab('gen')">⚡ Generador</button>
+  <button class="tab" id="tab-gal" onclick="showTab('gal')">🎬 Galería</button>
+  <button class="tab danger" id="tab-off" onclick="apagar()">⏻ Apagar servidor</button>
 </div>
 <div class="view active" id="view-gen">
-<h1>🎬 MiniMax H3 — i2v / v2v</h1>
+<h1>🎬 MiniMax H3 — i2v / v2v <span class="bal off" id="bal" title="Saldo Vast.ai">Saldo…</span></h1>
 <div class="sub">RTX 5090 · {{res}} · ~{{dur}}s · Genera video + audio nativo</div>
 <form id="f">
   <label>Archivos — arrastra hasta 5 (imágenes o videos)</label>
@@ -168,6 +187,19 @@ function fmtSize(b){
   if(b>1024) return (b/1024).toFixed(0)+' KB';
   return b+' B';
 }
+async function loadBalance(){
+  const el=$('bal');
+  try{
+    const j=await (await fetch('/api/balance')).json();
+    if(j.credit===undefined){ el.textContent='Saldo n/d'; el.className='bal off'; return; }
+    el.textContent='Saldo $'+j.credit.toFixed(2)+(j.hours?' · ~'+j.hours+'h':'');
+    el.className='bal '+(j.credit<0.5?'low':j.credit<2?'warn':'ok');
+  }catch(e){
+    el.textContent='Saldo n/d'; el.className='bal off';
+  }
+}
+loadBalance();
+setInterval(loadBalance, 60000);
 async function loadGallery(){
   $('gal').innerHTML='<div class="sub">Cargando…</div>';
   try{
@@ -279,6 +311,18 @@ $('pastebtn').addEventListener('click', async ()=>{
   document.body.appendChild(nota);
   setTimeout(()=>nota.remove(), 4000);
 });
+// --- apagar servidor (stop Vast, conserva disco y modelos) ---
+async function apagar(){
+  if(!confirm('¿Apagar el servidor? Se detiene el cobro de GPU. El disco y los modelos se conservan (puedes reiniciarlo después).')) return;
+  const pin=prompt('PIN de apagado (para evitar que cualquiera apague el servidor):');
+  if(pin===null) return;
+  try{
+    const r=await fetch('/shutdown',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'pin='+encodeURIComponent(pin)});
+    const j=await r.json();
+    if(j.ok){ alert('✔ Servidor apagado. Se detuvo el cobro de GPU. Para volver a encender: abre una sesión conmigo y ejecuto el start.'); }
+    else alert('Error: '+(j.error||j.resp||JSON.stringify(j)));
+  }catch(e){ alert('Error de red: '+e); }
+}
 $('f').addEventListener('submit', async e=>{
   e.preventDefault();
   if(!FILES.length) return;
@@ -397,6 +441,28 @@ def progress(pid):
 OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "/opt/workspace-internal/ComfyUI/output")
 THUMB_DIR = "/workspace/thumbs"
 GEN_FILE = "/workspace/generations.json"   # registro SOLO de lo generado vía esta web
+INSTANCE_ID = int(os.environ.get("INSTANCE_ID", "0") or 0)
+VAST_KEY = os.environ.get("VAST_API_KEY", "") or (open("/workspace/.env_vast").read().strip() if os.path.exists("/workspace/.env_vast") else "")
+
+def vast_stop():
+    """Detiene la instancia Vast (stop): conserva disco, deja de cobrar GPU."""
+    if not VAST_KEY or not INSTANCE_ID:
+        return {"ok": False, "error": "Sin VAST_API_KEY o INSTANCE_ID configurados"}
+    try:
+        r = requests.post(
+            f"https://console.vast.ai/api/v0/instances/{INSTANCE_ID}/stop/",
+            headers={"Authorization": f"Bearer {VAST_KEY}"}, timeout=30)
+        return {"ok": r.status_code == 200, "status": r.status_code, "resp": r.text[:300]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300]}
+
+@app.route("/shutdown", methods=["POST"])
+def shutdown():
+    """Apaga el servidor (stop Vast) para no gastar créditos. Requiere PIN."""
+    pin = request.form.get("pin", "")
+    if pin != os.environ.get("SHUTDOWN_PIN", "H3-APAGAR"):
+        return jsonify({"ok": False, "error": "PIN incorrecto"}), 403
+    return jsonify(vast_stop())
 
 def load_generations():
     try:
@@ -434,6 +500,24 @@ def list_videos():
 @app.route("/api/gallery")
 def api_gallery():
     return jsonify(list_videos())
+
+@app.route("/api/balance")
+def api_balance():
+    """Saldo de la cuenta Vast en tiempo real (campo credit, USD)."""
+    if not VAST_API_KEY:
+        return jsonify({"error": "sin VAST_API_KEY"}), 503
+    try:
+        r = requests.get("https://console.vast.ai/api/v0/users/current/",
+                         headers={"Authorization": f"Bearer {VAST_API_KEY}"}, timeout=15)
+        if r.status_code != 200:
+            return jsonify({"error": f"HTTP {r.status_code}"}), 502
+        credit = r.json().get("credit", 0)
+        rate = float(os.environ.get("VAST_RATE_H", "0.40"))
+        return jsonify({"credit": credit, "rate": rate,
+                        "hours": round(credit / rate, 1) if rate else 0,
+                        "ts": time.time()})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
 
 @app.route("/thumb/<path:rel>")
 def thumb(rel):
