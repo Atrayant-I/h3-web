@@ -12,7 +12,7 @@ from flask import Flask, request, render_template_string, jsonify, send_file
 COMFY = os.environ.get("COMFY_URL", "http://127.0.0.1:8188")
 RESOLUTION = os.environ.get("RESOLUTION", "480P")   # 480P o 768P
 DURATION = float(os.environ.get("DURATION", "5"))
-STEPS = int(os.environ.get("STEPS", "28"))  # 28 pasos (era 30): balance calidad/velocidad con SageAttention
+STEPS = int(os.environ.get("STEPS", "16"))  # 16 pasos: balance calidad/velocidad (8=ruido, 28=10min)
 MODEL_NAME = os.environ.get("MODEL_NAME", "MiniMax H3")
 # Clave de Vast: desde env o desde /workspace/.env (para el badge de saldo)
 def _load_env_file(path):
@@ -96,13 +96,13 @@ HTML = """<!DOCTYPE html>
   .col h2{font-size:14px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px;display:flex;align-items:center;gap:8px}
   .col h2 svg{color:#4f46e5}
   /* drop zone */
-  #drop{border:2px dashed #343b52;border-radius:12px;padding:26px 16px;text-align:center;cursor:pointer;color:#7c8498;font-size:13px;transition:all .15s;background:#12151f}
+  #drop {border:2px dashed #343b52;border-radius:12px;padding:26px 16px;text-align:center;cursor:pointer;color:#7c8498;font-size:13px;transition:all .15s;background:#12151f}
   #drop:hover{border-color:#4f46e5;color:#a5b0c2;background:#141827}
   #drop.dragover{border-color:#4f46e5;background:#1a1f33;color:#cbd5e1}
   #drop svg{margin-bottom:8px;color:#5b6479}
   #drop small{display:block;margin-top:4px;color:#5b6479;font-size:11px}
   /* previews */
-  #previews{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;min-height:0}
+  #previews {display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;min-height:0}
   .pitem{position:relative;border:1px solid #2a3044;border-radius:10px;overflow:hidden;background:#12151f}
   .pitem img,.pitem video{width:72px;height:96px;object-fit:cover;display:block}
   .ptag{position:absolute;top:4px;left:4px;background:rgba(14,16,23,.85);color:#cbd5e1;font-size:9px;padding:2px 6px;border-radius:6px;display:flex;align-items:center;gap:4px}
@@ -110,10 +110,10 @@ HTML = """<!DOCTYPE html>
   .px:hover{background:#ef4444}
   /* portapapeles */
   .cliprow{display:flex;justify-content:flex-end;margin-top:8px}
-  #pastebtn{display:flex;align-items:center;gap:6px;background:none;border:1px solid #2a3044;color:#8b93a7;border-radius:8px;padding:6px 10px;font-size:11px;cursor:pointer}
+  #pastebtn {display:flex;align-items:center;gap:6px;background:none;border:1px solid #2a3044;color:#8b93a7;border-radius:8px;padding:6px 10px;font-size:11px;cursor:pointer}
   #pastebtn:hover{color:#cbd5e1;border-color:#4f46e5}
   /* prompt */
-  #prompt{width:100%;background:#12151f;border:1px solid #2a3044;border-radius:10px;color:#e2e8f0;padding:10px 12px;font-size:13px;font-family:inherit;resize:vertical;min-height:64px;margin-top:12px}
+  #prompt {width:100%;background:#12151f;border:1px solid #2a3044;border-radius:10px;color:#e2e8f0;padding:10px 12px;font-size:13px;font-family:inherit;resize:vertical;min-height:64px;margin-top:12px}
   #prompt:focus{outline:none;border-color:#4f46e5}
   /* opciones */
   .opts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
@@ -123,27 +123,39 @@ HTML = """<!DOCTYPE html>
   .opt label svg{color:#4f46e5}
   .opt select{width:100%;background:#1a1e2b;border:1px solid #2a3044;color:#e2e8f0;border-radius:8px;padding:7px 8px;font-size:13px}
   .opt select:focus{outline:none;border-color:#4f46e5}
-  #durnote{display:block;font-size:10px;color:#f59e0b;margin-top:4px}
+  #durnote {display:block;font-size:10px;color:#f59e0b;margin-top:4px}
   .hint{margin-top:10px;font-size:11px;color:#5b6479;display:flex;align-items:center;gap:6px}
   /* botón generar */
-  #go{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:14px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity .15s}
+  #go {display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:14px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity .15s}
   #go:hover{opacity:.9}
   #go:disabled{opacity:.5;cursor:not-allowed}
   /* HUD resultado */
-  #status{font-size:13px;margin-bottom:8px;min-height:20px;display:flex;align-items:center;gap:8px}
+  #status {font-size:13px;margin-bottom:8px;min-height:20px;display:flex;align-items:center;gap:8px}
   .bar{height:8px;background:#1e2230;border-radius:6px;overflow:hidden;margin-bottom:14px}
-  #barfill{height:100%;width:0%;background:linear-gradient(90deg,#4f46e5,#7c3aed);transition:width .3s}
+  #barfill {height:100%;width:0%;background:linear-gradient(90deg,#4f46e5,#7c3aed);transition:width .3s}
+  /* animación de envío */
+  #animbox{display:none;align-items:center;gap:10px;margin-bottom:14px;padding:12px 14px;background:#12161f;border:1px solid #232838;border-radius:12px}
+  #animbox.show{display:flex}
+  .spinner{width:22px;height:22px;border:3px solid #2a3040;border-top-color:#4f46e5;border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #animtext{font-size:13px;color:#cbd5e1}
+  #animtext b{color:#a5b4fc}
+  .ok{color:#4ade80}
   #res video{width:100%;border-radius:10px;background:#000;border:1px solid #232838}
   #res .err{color:#f87171;font-size:12px;white-space:pre-wrap;margin-top:8px}
   .ok{color:#34d399}
   .empty{color:#5b6479;font-size:12px;text-align:center;padding:40px 10px;border:1px dashed #232838;border-radius:10px}
   .empty svg{margin-bottom:10px;color:#3b4257}
   /* galería */
-  #gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
-  @media (max-width:600px){#gal{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}}
+  #gal {display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+  @media (max-width:600px) { #gal {grid-template-columns:repeat(auto-fill,minmax(130px,1fr))} }
   .gitem{background:#151824;border:1px solid #232838;border-radius:12px;overflow:hidden;cursor:pointer;transition:all .15s}
   .gitem:hover{border-color:#4f46e5;transform:translateY(-2px)}
   .gitem img{width:100%;aspect-ratio:9/16;object-fit:cover;display:block;background:#000}
+  /* placeholder de generación en galería */
+  .genph{width:100%;aspect-ratio:9/16;background:#000;border:1px solid #232838;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;overflow:hidden}
+  .genph .spinner{width:30px;height:30px;border:3px solid #2a3040;border-top-color:#4f46e5;border-radius:50%;animation:spin .8s linear infinite}
+  .genph span{font-size:12px;color:#64748b}
   .gdel{position:absolute;top:6px;right:6px;background:rgba(14,16,23,.85);color:#f87171;border:1px solid rgba(248,113,113,.3);border-radius:7px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity .15s}
   .gitem:hover .gdel{opacity:1}
   .gdel:hover{background:rgba(220,38,38,.85);color:#fff}
@@ -195,8 +207,8 @@ HTML = """<!DOCTYPE html>
           <div class="opt">
             <label><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M19.1 4.9l-2.8 2.8M7.7 16.3l-2.8 2.8"/></svg>Calidad</label>
             <select id="qual">
-              <option value="768" selected>Máxima · 768p (turbo 8 pasos)</option>
-              <option value="480">Rápida · 480p (turbo 4 pasos)</option>
+              <option value="768" selected>Máxima · 768p (turbo 10 pasos)</option>
+              <option value="480">Rápida · 480p (turbo 12 pasos)</option>
             </select>
           </div>
           <div class="opt">
@@ -211,8 +223,8 @@ HTML = """<!DOCTYPE html>
           <div class="opt">
             <label><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h7v9H4zM13 4h7v5h-7zM13 13h7v7h-7zM4 17h7v3H4z"/></svg>Modo</label>
             <select id="mode">
-              <option value="auto" selected>Auto</option>
-              <option value="i2v">i2v (imagen → video)</option>
+              <option value="i2v" selected>i2v (imagen → video)</option>
+              <option value="v2v">v2v (video → video, edición)</option>
             </select>
           </div>
         </div>
@@ -228,6 +240,7 @@ HTML = """<!DOCTYPE html>
 
       <div class="col">
         <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 4v16M17 4v16M2 9h5M2 15h5M17 9h5M17 15h5"/></svg>Resultado</h2>
+        <div id="animbox"><div class="spinner"></div><div id="animtext">Enviando archivo al servidor...</div></div>
         <div id="status"></div>
         <div class="bar" id="bar"><div id="barfill"></div></div>
         <div id="res"></div>
@@ -260,6 +273,12 @@ function fmtSize(b){
   if(b>1024) return (b/1024).toFixed(0)+' KB';
   return b+' B';
 }
+function fmtDur(sec){
+  sec=Math.floor(sec||0);
+  if(!sec) return '—';
+  const m=Math.floor(sec/60), s=sec%60;
+  return m>0 ? m+'m '+String(s).padStart(2,'0')+'s' : s+'s';
+}
 async function loadBalance(){
   const el=$('bal');
   try{
@@ -277,8 +296,15 @@ async function loadGallery(){
   $('gal').innerHTML='<div class="sub">Cargando…</div>';
   try{
     const vids=await (await fetch('/api/gallery')).json();
-    if(!vids.length){ $('gal').innerHTML='<div class="sub">Aún no hay videos generados.</div>'; return; }
-    $('gal').innerHTML=vids.map(v=>{
+    let html='';
+    // recuadro negro con animación si hay una generación en curso
+    try{
+      const act=await (await fetch('/api/active')).json();
+      if(act.active) html+='<div class="genph" title="Generando video…"><div class="spinner"></div><span>Generando…</span></div>';
+      if(act.active) setTimeout(loadGallery, 15000);  // refresca al terminar
+    }catch(e){}
+    if(!vids.length && !html){ $('gal').innerHTML='<div class="sub">Aún no hay videos generados.</div>'; return; }
+    $('gal').innerHTML=html+vids.map(v=>{
       const url='/media/'+v.rel.split('/').map(encodeURIComponent).join('/');
       return '<div class="gitem" data-url="'+url+'">'+
         '<img loading="lazy" src="/thumb/'+v.rel.split('/').map(encodeURIComponent).join('/')+'" alt="'+v.name.replace(/"/g,'&quot;')+'">'+
@@ -286,7 +312,7 @@ async function loadGallery(){
           '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M10 11v6M14 11v6"/></svg>'+
         '</button>'+
         '<div class="gname">'+v.name.replace(/"/g,'&quot;')+'</div>'+
-        '<div class="gmeta">'+fmtSize(v.size)+' · '+new Date(v.mtime*1000).toLocaleString()+'</div>'+
+        '<div class="gmeta">'+fmtSize(v.size)+' · '+fmtDur(v.elapsed)+' · '+new Date(v.mtime*1000).toLocaleString()+'</div>'+
       '</div>';
     }).join('');
     $('gal').addEventListener('click', e=>{
@@ -410,32 +436,45 @@ async function apagar(){
     else alert('Error: '+(j.error||j.resp||JSON.stringify(j)));
   }catch(e){ alert('Error de red: '+e); }
 }
+$('go').addEventListener('click', ()=>{ $('f').requestSubmit(); });
 $('f').addEventListener('submit', async e=>{
   e.preventDefault();
   if(!FILES.length) return;
-  $('go').disabled=true; $('status').textContent='Subiendo archivo...'; $('bar').style.display='block';
+  $('go').disabled=true; $('bar').style.display='block';
+  $('animbox').classList.add('show');
+  $('animtext').innerHTML='Enviando archivo al servidor...';
   const fd=new FormData();
   FILES.forEach(f=>fd.append('files',f));
   fd.append('prompt',$('prompt').value); fd.append('mode',$('mode').value); fd.append('duration',$('dur').value); fd.append('quality',$('qual').value); fd.append('orientation',$('orient').value);
   try{
     const r=await fetch('/generate',{method:'POST',body:fd});
     const j=await r.json();
-    if(!r.ok){ $('res').innerHTML='<div class="err">'+j.error+'</div>'; return; }
-    $('status').textContent='Generando (puede tardar 1-5 min)...';
+    if(!r.ok){ $('animbox').classList.remove('show'); $('res').innerHTML='<div class="err">'+j.error+'</div>'; return; }
+    $('animtext').innerHTML='<b>✓ Video enviado al servidor</b> — generando (<span id="timer">0:00</span>)...';
     const pid=j.prompt_id;
+    // cronómetro en vivo (mm:ss)
+    const t0=Date.now();
+    const timerInt=setInterval(()=>{
+      const s=Math.floor((Date.now()-t0)/1000);
+      const m=Math.floor(s/60), ss=s%60;
+      const el=$('timer'); if(el) el.textContent=m+':'+String(ss).padStart(2,'0');
+    },1000);
     // poll
     while(true){
       await new Promise(res=>setTimeout(res,2500));
       const s=await (await fetch('/status/'+pid)).json();
       $('barfill').style.width=(s.progress||0)+'%';
-      if(s.error){ $('status').innerHTML='<span class="err">'+s.error+'</span>'; break; }
+      if(s.error){ clearInterval(timerInt); $('animbox').classList.remove('show'); $('status').innerHTML='<span class="err">'+s.error+'</span>'; break; }
       if(s.done){
-        $('status').innerHTML='<span class="ok">✔ Listo</span>';
+        clearInterval(timerInt);
+        const ts=Math.floor(((s.elapsed||(Date.now()-t0)/1000)||0));
+        $('animbox').classList.remove('show');
+        $('status').innerHTML='<span class="ok">✔ Listo en '+Math.floor(ts/60)+'m '+String(ts%60).padStart(2,'0')+'s</span>';
         $('res').innerHTML='<video controls autoplay loop src="/result/'+pid+'"></video>';
         break;
       }
     }
-  }catch(err){ $('res').innerHTML='<div class="err">'+err+'</div>'; }
+  }catch(err){ $('animbox').classList.remove('show'); $('res').innerHTML='<div class="err">'+err+'</div>'; }
   finally{ $('go').disabled=false; }
 });
 
@@ -531,6 +570,7 @@ def progress(pid):
 OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "/opt/workspace-internal/ComfyUI/output")
 THUMB_DIR = "/workspace/thumbs"
 GEN_FILE = "/workspace/generations.json"   # registro SOLO de lo generado vía esta web
+START_TIMES = {}  # pid -> timestamp de envío (para medir duración de generación)
 INSTANCE_ID = int(os.environ.get("INSTANCE_ID", "0") or 0)
 VAST_KEY = os.environ.get("VAST_API_KEY", "") or (open("/workspace/.env_vast").read().strip() if os.path.exists("/workspace/.env_vast") else "")
 
@@ -562,14 +602,15 @@ def load_generations():
     except Exception:
         return []
 
-def save_generation(rel):
+def save_generation(rel, elapsed=None):
     """Registra un video completado vía la web (dedupe por ruta relativa)."""
     gens = load_generations()
     if rel not in [g["rel"] for g in gens]:
         full = os.path.join(OUTPUT_DIR, rel)
         gens.append({"rel": rel, "name": os.path.basename(rel),
                      "size": os.path.getsize(full) if os.path.isfile(full) else 0,
-                     "mtime": os.path.getmtime(full) if os.path.isfile(full) else time.time()})
+                     "mtime": os.path.getmtime(full) if os.path.isfile(full) else time.time(),
+                     "elapsed": elapsed if elapsed is not None else 0})
         gens.sort(key=lambda g: g["mtime"], reverse=True)
         try:
             with open(GEN_FILE, "w") as f:
@@ -585,12 +626,22 @@ def list_videos():
         full = os.path.join(OUTPUT_DIR, g["rel"])
         if os.path.isfile(full):
             out.append({"name": g["name"], "rel": g["rel"],
-                        "size": os.path.getsize(full), "mtime": os.path.getmtime(full)})
+                        "size": os.path.getsize(full), "mtime": os.path.getmtime(full),
+                        "elapsed": g.get("elapsed", 0)})
     return out
 
 @app.route("/api/gallery")
 def api_gallery():
     return jsonify(list_videos())
+
+@app.route("/api/active")
+def api_active():
+    """True si hay una generación corriendo en ComfyUI."""
+    try:
+        q = requests.get(f"{COMFY}/queue", timeout=10).json()
+        return jsonify({"active": bool(q.get("queue_running"))})
+    except Exception:
+        return jsonify({"active": False})
 
 @app.route("/api/delete", methods=["POST"])
 def api_delete():
@@ -707,20 +758,22 @@ def generate():
     # el primer archivo decide el modo principal
     first = infos[0]
     is_vid = first["is_vid"]
+    # el modo v2v solo aplica si hay un video REAL; con 1 sola imagen SIEMPRE fl2va (no-omni)
     if mode == "i2v":
         is_vid = False
     elif mode == "v2v":
-        is_vid = True
+        is_vid = any(i["is_vid"] for i in infos)
 
     try:
         nodes, info = find_h3_nodes()
     except Exception as e:
         return jsonify({"error": f"No se pudo contactar ComfyUI: {e}"}), 502
 
-    # elegir nodo
+    # elegir nodo: i2v simple (1 imagen) -> ImageToVideo + first_frame (el video EMPIEZA con tu foto exacta)
+    # v2v / multi-imagen -> ReferenceToVideo (ref2va) con tokens <Picture i>/<Video k>
     ref_node = next((n for n in nodes if "Reference" in n), None)
     img_node = next((n for n in nodes if "ImageToVideo" in n), None)
-    use_ref = is_vid or len(infos) > 1  # multi-imagen o video -> nodo referencia (omni-reference)
+    use_ref = is_vid or len(infos) > 1
     if use_ref:
         if not ref_node:
             return jsonify({"error": f"El servidor no tiene nodo de referencia. Nodos H3: {nodes}"}), 400
@@ -818,22 +871,21 @@ def generate():
     length = int(round(dur * 24))  # 24fps; el nodo ajusta a grid 17k+5
     length = max(length, 124)  # mínimo 124 frames (~5s)
 
+    # modelo según modo: ReferenceToVideo (omni/v2v) usa ref2va; ImageToVideo (i2v simple) usa fl2va
+    unet_name = ("diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors" if use_ref
+                 else "diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors")
     base = {
-        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": "diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors", "weight_dtype": "default"}},
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": unet_name, "weight_dtype": "default"}},
         "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors", "type": "minimax"}},
         "3": {"class_type": "VAELoader", "inputs": {"vae_name": "vae/minimax_h3_video_vae_fp16.safetensors"}},
         "4": {"class_type": "VAELoader", "inputs": {"vae_name": "vae/minimax_h3_audio_vae_fp32.safetensors"}},
     }
 
-    # prompt oculto: misma persona/cara/pose/fondo, sin música ni diálogos salvo petición
-    # (usa tokens oficiales <Picture 1>/<Video 1> para que el modelo aplique las referencias)
-    hidden_p = ("Keep the exact same person, face, pose, framing and background as the input. "
-                "Preserve the facial identity and features with high fidelity. "
-                "Do not add any other people or persons in the background or scene. "
-                "If the person is holding a phone or any object in their hand, remove the object "
-                "and show that hand making the peace sign (love and peace hand gesture) in the same position. "
-                "Do not add music, dialogue, voices or speech unless explicitly requested "
-                "in the user instructions. ")
+    # prompt oculto base: preservar identidad sin congelar el movimiento
+    # (el prompt pesado de "same pose/background" es SOLO para v2v edición)
+    hidden_p = ("This is the person from the reference image. Match their facial identity, "
+                "features and appearance. Follow the user's instructions for movement, "
+                "expression and gestures naturally.")
 
     if use_ref:
         # nodo ReferenceToVideo con ref_videos y/o ref_images (omni-reference)
@@ -890,40 +942,59 @@ def generate():
         if not refs_txt:
             refs_txt = "<Video 1>"
         if vid_names:
-            edit_p = (f"In Video 1, " + prompt +
-                      f". Keep the same person, their exact pose, motion and gestures, the background, "
-                      f"and the camera framing exactly the same as Video 1. "
-                      f"Sound: keep the original audio of Video 1.")
+            # FORMATO OFICIAL: el prompt DEBE referenciar el video con la etiqueta <Video 1>
+            # (doc: "The prompt refers to the references with <Picture i>, <Video k> and <Audio j> tags")
+            edit_p = (f"<Video 1> — " + prompt +
+                      f". Keep the same person, their exact face, pose, motion and gestures, the background, "
+                      f"and the camera framing exactly the same as the reference video. "
+                      f"Sound: keep the original audio of the reference video.")
         else:
-            # i2v multi-imagen: hidden_p referenciando las fotos con sus tokens
-            edit_p = hidden_p.replace("as the input", f"as {refs_txt}") + prompt
+            # i2v con imágenes: roles explícitos por recurso (la identidad la fija la foto)
+            roles = []
+            for j in range(1, len(img_names) + 1):
+                roles.append(f"<Picture {j}> fixes the subject's identity, face and appearance")
+            edit_p = (" — ".join(roles) + ". " + hidden_p + " " + prompt)
         base["6"] = {
             "class_type": node_type,
             "inputs": {
                 "clip": ["2", 0], "vae": ["3", 0], "audio_vae": ["4", 0],
                 "prompt": edit_p, "width": width, "height": height, "length": length,
-                "ref_image_size": "match",
+                "ref_image_size": "max",
             },
         }
         base["6"]["inputs"].update(refs)
     else:
-        # i2v simple: ImageToVideo con first_frame
+        # i2v simple: LoadImage -> ImageResize+ (lanczos, fill/crop, múltiplo 32) -> first_frame
         base["5"] = {"class_type": "LoadImage", "inputs": {"image": img_names[0]}}
+        base["5b"] = {
+            "class_type": "ImageResize+",
+            "inputs": {
+                "image": ["5", 0], "width": width, "height": height,
+                "interpolation": "lanczos", "method": "fill / crop",
+                "condition": "always", "multiple_of": 32,
+            },
+        }
         base["6"] = {
             "class_type": node_type,
             "inputs": {
                 "clip": ["2", 0], "vae": ["3", 0],
-                "prompt": hidden_p + prompt,
+                "prompt": prompt + ". " + hidden_p,  # acción del usuario primero, identidad después
                 "width": width, "height": height, "length": length,
-                "first_frame": ["5", 0],
+                "first_frame": ["5b", 0],
             },
         }
 
+    # pasos/CFG según calidad: 480p = 12 steps / cfg 1.5; 768p = 10 steps / cfg 1.3
+    steps = int(os.environ.get("STEPS", "10"))
+    cfg = 1.3
+    if quality == "480":
+        steps = 12
+        cfg = 1.5
     base["7"] = {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["6", 0]}}
     base["8"] = {
         "class_type": "KSampler",
         "inputs": {
-            "model": ["1", 0], "seed": random_seed(), "steps": STEPS, "cfg": 1.0,
+            "model": ["1", 0], "seed": random_seed(), "steps": steps, "cfg": cfg,
             "sampler_name": "euler", "scheduler": "simple",
             "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["6", 1], "denoise": 1.0,
         },
@@ -938,6 +1009,7 @@ def generate():
         pid = submit_workflow(wf)
     except Exception as e:
         return jsonify({"error": f"Error enviando workflow: {e}"}), 502
+    START_TIMES[pid] = time.time()  # inicia el cronómetro de generación
     return jsonify({"prompt_id": pid, "mode": "v2v" if is_vid else "i2v"})
 
 @app.route("/status/<pid>")
@@ -968,8 +1040,9 @@ def status(pid):
                 if fn and fn.lower().endswith((".mp4", ".webm", ".mov", ".mkv", ".gif")):
                     files.append((fn, f.get("subfolder", ""), f.get("type", "output")))
     if files:
-        save_generation(files[0][1] + "/" + files[0][0] if files[0][1] else files[0][0])
-        return jsonify({"done": True, "file": files[0]})
+        elapsed = time.time() - START_TIMES.get(pid, time.time())
+        save_generation(files[0][1] + "/" + files[0][0] if files[0][1] else files[0][0], elapsed=elapsed)
+        return jsonify({"done": True, "file": files[0], "elapsed": elapsed})
     return jsonify({"done": True, "error": "Sin archivo de salida"})
 
 @app.route("/result/<pid>")
